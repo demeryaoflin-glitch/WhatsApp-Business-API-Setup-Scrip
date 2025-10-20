@@ -1,5 +1,156 @@
 // file: App.jsx
+// file: App.jsx
 import React, {useState, useEffect, useRef} from "react";
+import io from "socket.io-client";
+import axios from "axios";
+
+// الأفضل جعل عنوان السيرفر متغير بيئة
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://127.0.0.1:8000";
+const socket = io(SOCKET_URL);
+
+export default function App(){
+  const [telemetry, setTelemetry] = useState(null);
+  const [commands, setCommands] = useState([]);
+  const [cmdType, setCmdType] = useState("ATTITUDE_ADJUST");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(()=>{
+    const handleTelemetry = (msg) => {
+      setTelemetry(msg.data);
+    };
+    
+    const handleCommandUpdate = (msg) => {
+      fetchCommands();
+    };
+
+    socket.on("telemetry", handleTelemetry);
+    socket.on("command_update", handleCommandUpdate);
+    
+    // جلب البيانات الأولية
+    fetchInitialData();
+
+    return ()=> {
+      socket.off("telemetry", handleTelemetry);
+      socket.off("command_update", handleCommandUpdate);
+    };
+  }, []);
+
+  const fetchInitialData = async () => {
+    try {
+      setLoading(true);
+      const [commandsRes, telemetryRes] = await Promise.all([
+        axios.get("/api/commands"),
+        axios.get("/api/telemetry/latest")
+      ]);
+      setCommands(commandsRes.data);
+      setTelemetry(telemetryRes.data.data);
+    } catch (err) {
+      setError("فشل في جلب البيانات");
+      console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCommands = async () => {
+    try {
+      const response = await axios.get("/api/commands");
+      setCommands(response.data);
+    } catch (err) {
+      setError("فشل في تحديث الأوامر");
+    }
+  };
+
+  const sendCommand = async () => {
+    try {
+      setLoading(true);
+      const payload = { 
+        type: cmdType, 
+        params: { 
+          note: "from web UI",
+          timestamp: new Date().toISOString()
+        } 
+      };
+      await axios.post("/api/commands", payload);
+      // لا حاجة لـ console.log هنا في الإنتاج
+    } catch (err) {
+      setError("فشل في إرسال الأمر");
+      console.error("Command error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading && !telemetry) {
+    return <div className="p-6">جاري التحميل...</div>;
+  }
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">GCS — لوحة تحكم القمر (محاكاة)</h1>
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+
+      <div className="mb-6 p-4 border rounded">
+        <h2 className="text-lg font-semibold mb-2">آخر تليمتري</h2>
+        <pre className="bg-gray-100 p-3 rounded">
+          {telemetry ? JSON.stringify(telemetry, null, 2) : "لا توجد بيانات"}
+        </pre>
+      </div>
+
+      <div className="mb-6 p-4 border rounded">
+        <h2 className="text-lg font-semibold mb-2">أرسل أمر</h2>
+        <div className="flex items-center gap-2">
+          <select 
+            value={cmdType} 
+            onChange={e=>setCmdType(e.target.value)}
+            className="border p-2 rounded"
+            disabled={loading}
+          >
+            <option value="ATTITUDE_ADJUST">ضبط الاتجاه</option>
+            <option value="PAYLOAD_ON">تشغيل الحمولة</option>
+            <option value="PAYLOAD_OFF">إيقاف الحمولة</option>
+          </select>
+          <button 
+            onClick={sendCommand} 
+            disabled={loading}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
+          >
+            {loading ? "جاري الإرسال..." : "إرسال"}
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 border rounded">
+        <h2 className="text-lg font-semibold mb-2">سجل الأوامر</h2>
+        {commands.length === 0 ? (
+          <p>لا توجد أوامر</p>
+        ) : (
+          <ul className="space-y-2">
+            {commands.map(c=>(
+              <li key={c.cmd_id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                <span className="font-mono">{c.cmd_id}</span>
+                <span>{c.type}</span>
+                <span className={`px-2 py-1 rounded ${
+                  c.status === 'EXECUTED' ? 'bg-green-100 text-green-800' :
+                  c.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                  'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {c.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}import React, {useState, useEffect, useRef} from "react";
 import io from "socket.io-client";
 import axios from "axios";
 
