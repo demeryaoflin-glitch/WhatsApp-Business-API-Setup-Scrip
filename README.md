@@ -1,4 +1,64 @@
-const express = require('express');gh repo clone demeryaoflin-glitch/WhatsApp-Business-API-Setup-Scrip
+// file: App.jsx
+import React, {useState, useEffect, useRef} from "react";
+import io from "socket.io-client";
+import axios from "axios";
+
+const socket = io("http://127.0.0.1:8000");
+
+export default function App(){
+  const [telemetry, setTelemetry] = useState(null);
+  const [commands, setCommands] = useState([]);
+  const [cmdType, setCmdType] = useState("ATTITUDE_ADJUST");
+
+  useEffect(()=>{
+    socket.on("telemetry", (msg) => {
+      setTelemetry(msg.data);
+    });
+    socket.on("command_update", (msg) => {
+      // تحديث قائمة الأوامر: نجلب القائمة من السيرفر
+      axios.get("/api/commands").then(r=> setCommands(r.data)).catch(()=>{});
+    });
+    // initial fetch
+    axios.get("/api/commands").then(r=> setCommands(r.data)).catch(()=>{});
+    axios.get("/api/telemetry/latest").then(r=> setTelemetry(r.data.data)).catch(()=>{});
+    return ()=> socket.off("telemetry");
+  }, []);
+
+  const sendCommand = async () => {
+    const payload = { type: cmdType, params: { note: "from web UI" } };
+    const r = await axios.post("/api/commands", payload);
+    console.log("cmd posted", r.data);
+  }
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">GCS — لوحة تحكم القمر (محاكاة)</h1>
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold">آخر تليمتري</h2>
+        <pre>{JSON.stringify(telemetry, null, 2)}</pre>
+      </div>
+
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold">أرسل أمر</h2>
+        <select value={cmdType} onChange={e=>setCmdType(e.target.value)}>
+          <option>ATTITUDE_ADJUST</option>
+          <option>PAYLOAD_ON</option>
+          <option>PAYLOAD_OFF</option>
+        </select>
+        <button onClick={sendCommand} className="ml-2">إرسال</button>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold">سجل الأوامر</h2>
+        <ul>
+          {commands.map(c=>(
+            <li key={c.cmd_id}>{c.cmd_id} — {c.type} — {c.status}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}pip install flask flask-sqlalchemy flask-socketio requestsconst express = require('express');gh repo clone demeryaoflin-glitch/WhatsApp-Business-API-Setup-Scrip
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
